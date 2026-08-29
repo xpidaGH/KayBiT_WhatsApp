@@ -1,0 +1,8 @@
+{
+  "name": "KayBiT_WhatsApp",
+  "description": "Comprehensive multi-language architecture and engineering workbench for KayBiT_WhatsApp, dividing the mobile messaging ecosystem across 5 tracks and 20 programming languages.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
