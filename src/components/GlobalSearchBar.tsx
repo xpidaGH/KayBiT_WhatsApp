@@ -18,6 +18,8 @@ import {
 import { ENGINEERING_TRACKS } from '../data/tracksData';
 import { CAPSTONE_MILESTONES } from '../data/curriculumData';
 import { ProgrammingLanguageInfo, TrackId } from '../types';
+import { saveRecentSearch, getRecentSearches, RecentSearchItem } from '../utils/recentSearches';
+import { Clock } from 'lucide-react';
 
 interface GlobalSearchBarProps {
   onSelectLanguage: (language: ProgrammingLanguageInfo) => void;
@@ -239,10 +241,38 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
     setQuery('');
 
     if (item.type === 'language') {
-      onSelectLanguage(item.data as ProgrammingLanguageInfo);
+      const lang = item.data as ProgrammingLanguageInfo;
+      saveRecentSearch({
+        id: `lang-${lang.id}`,
+        type: 'language',
+        title: lang.name,
+        subtitle: lang.roleTitle,
+        badge: item.badge || 'Language',
+        data: { language: lang, trackId: lang.trackId },
+      });
+      window.dispatchEvent(new Event('kaybit_recent_searches_updated'));
+      onSelectLanguage(lang);
     } else if (item.type === 'track') {
+      saveRecentSearch({
+        id: `track-${item.data.id}`,
+        type: 'track',
+        title: item.data.title,
+        subtitle: item.data.subtitle,
+        badge: 'Track',
+        data: { trackId: item.data.id as TrackId },
+      });
+      window.dispatchEvent(new Event('kaybit_recent_searches_updated'));
       onSelectTrack(item.data.id as TrackId);
     } else if (item.type === 'milestone') {
+      saveRecentSearch({
+        id: `milestone-${item.data.milestone.sprint}`,
+        type: 'milestone',
+        title: `${item.data.milestone.sprint}: ${item.data.milestone.title}`,
+        subtitle: `Week ${item.data.milestone.week}`,
+        badge: 'Milestone',
+        data: { sprintIdx: item.data.sprintIdx },
+      });
+      window.dispatchEvent(new Event('kaybit_recent_searches_updated'));
       onSelectMilestone(item.data.sprintIdx);
     }
   };
@@ -438,23 +468,62 @@ export const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
             </div>
           </div>
 
-          {/* Quick Preset Filter Chips when query is empty or short */}
+          {/* Recent Searches & Popular Presets when query is empty */}
           {!query && (
-            <div className="px-3 py-2 bg-slate-950/40 border-b border-slate-800/60 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-              <span className="text-[10px] text-slate-500 font-medium shrink-0">Popular:</span>
-              {quickFilterPresets.map((preset) => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  onClick={() => {
-                    setQuery(preset.query);
-                    inputRef.current?.focus();
-                  }}
-                  className="px-2 py-0.5 rounded-md bg-slate-800/90 hover:bg-slate-700 text-[10px] text-slate-300 border border-slate-700 hover:border-emerald-500/40 hover:text-emerald-300 transition-colors whitespace-nowrap cursor-pointer"
-                >
-                  {preset.label}
-                </button>
-              ))}
+            <div className="border-b border-slate-800/60 bg-slate-950/40 divide-y divide-slate-800/40">
+              {/* Recent Searches row */}
+              {(() => {
+                const recents = getRecentSearches();
+                if (recents.length === 0) return null;
+                return (
+                  <div className="px-3 py-2 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                    <span className="text-[10px] text-slate-400 font-semibold flex items-center gap-1 shrink-0">
+                      <Clock className="w-3 h-3 text-emerald-400" />
+                      Recent:
+                    </span>
+                    {recents.slice(0, 5).map((r) => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => {
+                          setIsOpen(false);
+                          if (r.type === 'language' && r.data.language) {
+                            onSelectLanguage(r.data.language);
+                          } else if (r.type === 'track' && r.data.trackId) {
+                            onSelectTrack(r.data.trackId);
+                          } else if (r.type === 'milestone' && typeof r.data.sprintIdx === 'number') {
+                            onSelectMilestone(r.data.sprintIdx);
+                          } else {
+                            setQuery(r.title);
+                          }
+                        }}
+                        className="px-2 py-0.5 rounded-md bg-emerald-950/40 hover:bg-emerald-900/60 text-[10px] text-emerald-300 border border-emerald-500/30 transition-colors whitespace-nowrap cursor-pointer flex items-center gap-1"
+                        title={r.subtitle}
+                      >
+                        <span>{r.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Popular quick filters */}
+              <div className="px-3 py-1.5 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                <span className="text-[10px] text-slate-500 font-medium shrink-0">Popular:</span>
+                {quickFilterPresets.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => {
+                      setQuery(preset.query);
+                      inputRef.current?.focus();
+                    }}
+                    className="px-2 py-0.5 rounded-md bg-slate-800/90 hover:bg-slate-700 text-[10px] text-slate-300 border border-slate-700 hover:border-emerald-500/40 hover:text-emerald-300 transition-colors whitespace-nowrap cursor-pointer"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 

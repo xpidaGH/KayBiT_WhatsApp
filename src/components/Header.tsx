@@ -9,18 +9,21 @@ import {
   Sparkles, 
   ShieldCheck, 
   Activity, 
-  Cpu, 
-  Server,
-  Download,
-  BookOpen,
-  Smartphone,
-  Sun,
-  Moon,
-  MessageSquare,
-  Network
+  Download, 
+  BookOpen, 
+  Smartphone, 
+  Sun, 
+  Moon, 
+  MessageSquare, 
+  Network,
+  Palette,
+  Image as ImageIcon
 } from 'lucide-react';
 import { GlobalSearchBar } from './GlobalSearchBar';
+import { RecentSearchesDropdown } from './RecentSearchesDropdown';
+import { KbtBrandLogo } from './KbtBrandLogo';
 import { ProgrammingLanguageInfo, TrackId } from '../types';
+import { saveRecentSearch } from '../utils/recentSearches';
 
 export type AppTabId = 
   | 'whatsapp'
@@ -44,6 +47,8 @@ interface HeaderProps {
   onSelectLanguage: (language: ProgrammingLanguageInfo) => void;
   onSelectTrack: (trackId: TrackId) => void;
   onSelectMilestone: (sprintIdx: number) => void;
+  onOpenThemeModal: () => void;
+  onOpenBrandAssets: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -57,6 +62,8 @@ export const Header: React.FC<HeaderProps> = ({
   onSelectLanguage,
   onSelectTrack,
   onSelectMilestone,
+  onOpenThemeModal,
+  onOpenBrandAssets,
 }) => {
   const tabs = [
     { id: 'whatsapp', label: 'KayBiT_WhatsApp App', icon: MessageSquare, badge: 'Live Client' },
@@ -70,19 +77,36 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'curriculum', label: 'Timeline & Syllabus', icon: GraduationCap, badge: 'Gantt Planner' },
   ] as const;
 
+  const handleTabClick = (tabId: AppTabId) => {
+    const tab = tabs.find((t) => t.id === tabId);
+    if (tab) {
+      saveRecentSearch({
+        id: `tab-${tabId}`,
+        type: 'tab',
+        title: tab.label,
+        subtitle: 'Navigation Tab',
+        badge: ('badge' in tab ? tab.badge : '') || ('count' in tab ? tab.count : '') || 'Tab',
+        data: { tabId },
+      });
+      window.dispatchEvent(new Event('kaybit_recent_searches_updated'));
+    }
+    setActiveTab(tabId);
+  };
 
   return (
     <header id="main-header" className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-40">
-      {/* Top Banner with Search & Stats */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-3 sm:gap-4">
-        {/* Brand Logo & Title */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-sky-500 flex items-center justify-center shadow-lg shadow-emerald-500/20 text-white font-black tracking-tight text-xl shrink-0">
-            KB
-          </div>
+      {/* Top Banner with Search & Controls */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+        {/* Brand Logo & Title with Multiplatform App Icon */}
+        <div 
+          onClick={onOpenBrandAssets}
+          className="flex items-center gap-3 cursor-pointer group select-none"
+          title="Click to view App Icon in Desktop Title Bars, Mobile App Bars & Web Headers"
+        >
+          <KbtBrandLogo variant="web-header" size="lg" className="group-hover:scale-105 transition-transform" />
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-base sm:text-lg font-bold text-slate-100 tracking-tight">
+              <h1 className="text-base sm:text-lg font-bold text-slate-100 tracking-tight group-hover:text-emerald-400 transition-colors">
                 KayBiT_WhatsApp
               </h1>
               <span className="hidden md:flex px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 items-center gap-1">
@@ -95,53 +119,65 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        {/* Global Search Bar (Languages, Tracks, Syllabus) */}
-        <GlobalSearchBar
-          onSelectLanguage={onSelectLanguage}
-          onSelectTrack={onSelectTrack}
-          onSelectMilestone={onSelectMilestone}
-        />
+        {/* Global Search Bar & Recent Searches Dropdown */}
+        <div className="flex items-center gap-2 flex-1 max-w-xl">
+          <GlobalSearchBar
+            onSelectLanguage={onSelectLanguage}
+            onSelectTrack={onSelectTrack}
+            onSelectMilestone={onSelectMilestone}
+          />
 
-        {/* Live System Metrics */}
-        <div className="hidden xl:flex items-center gap-5 text-xs text-slate-300 bg-slate-950/60 px-3.5 py-1.5 rounded-xl border border-slate-800/80">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-slate-400">Gateway:</span>
-            <span className="font-semibold text-emerald-400">1M Conns (Go)</span>
-          </div>
-          <div className="w-px h-3 bg-slate-700" />
-          <div className="flex items-center gap-2">
-            <Activity className="w-3.5 h-3.5 text-sky-400" />
-            <span className="text-slate-400">P99:</span>
-            <span className="font-semibold text-sky-400">&lt; 1.8ms</span>
-          </div>
+          {/* Recent Searches Header Feature */}
+          <RecentSearchesDropdown
+            onSelectTab={handleTabClick}
+            onSelectLanguage={onSelectLanguage}
+            onSelectTrack={onSelectTrack}
+            onSelectMilestone={onSelectMilestone}
+          />
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2">
-          {/* Light / Dark Mode Toggle Button */}
+        {/* Action Buttons: Theme Settings, Themes, Guides */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Theme Settings Button (5 UI Variations Modal) */}
+          <button
+            id="btn-theme-settings"
+            onClick={onOpenThemeModal}
+            className="px-2.5 sm:px-3 py-1.5 text-xs font-medium text-slate-200 bg-slate-800/90 hover:bg-slate-750 hover:text-white border border-slate-700 hover:border-slate-600 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+            title="Theme Settings: Select from 5 distinct UI variations (Ctrl/Cmd + T)"
+            aria-label="Open Theme Settings modal"
+          >
+            <Palette className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden sm:inline font-medium">Theme Settings</span>
+          </button>
+
+          {/* Light / Dark Mode Quick Toggle */}
           <button
             id="btn-theme-toggle"
             onClick={onToggleTheme}
-            className={`px-2.5 sm:px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 cursor-pointer border shadow-sm ${
+            className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1 cursor-pointer border shadow-sm ${
               theme === 'light'
-                ? 'bg-amber-50 hover:bg-amber-100/80 text-amber-900 border-amber-300 shadow-amber-100'
-                : 'bg-slate-800/90 hover:bg-slate-750 text-slate-200 border-slate-700 hover:border-slate-600'
+                ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300'
+                : 'bg-slate-800/90 hover:bg-slate-750 text-slate-300 border-slate-700'
             }`}
-            title={`Switch to ${theme === 'dark' ? 'Light Theme (Reader Mode)' : 'Dark Theme (Night Studio)'} (Ctrl/Cmd + Shift + L)`}
+            title={`Toggle ${theme === 'dark' ? 'Light' : 'Dark'} mode`}
             aria-label="Toggle light/dark theme"
           >
             {theme === 'light' ? (
-              <>
-                <Moon className="w-3.5 h-3.5 text-indigo-600 fill-indigo-600/20" />
-                <span className="hidden sm:inline font-semibold text-slate-800">Dark Mode</span>
-              </>
+              <Moon className="w-3.5 h-3.5 text-indigo-600" />
             ) : (
-              <>
-                <Sun className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
-                <span className="hidden sm:inline font-medium text-slate-300">Light Mode</span>
-              </>
+              <Sun className="w-3.5 h-3.5 text-amber-400" />
             )}
+          </button>
+
+          {/* Platform App Icons Preview Button */}
+          <button
+            id="btn-brand-assets"
+            onClick={onOpenBrandAssets}
+            className="hidden lg:flex px-2.5 sm:px-3 py-1.5 text-xs font-medium text-amber-300 hover:text-amber-200 bg-amber-950/40 hover:bg-amber-900/60 border border-amber-500/30 rounded-lg transition-all items-center gap-1.5 cursor-pointer shadow-sm"
+            title="View App Icon in Desktop Title Bars, Mobile App Bars & Web Headers"
+          >
+            <ImageIcon className="w-3.5 h-3.5 text-amber-400" />
+            <span>App Icons</span>
           </button>
 
           {/* User Guide Button */}
@@ -152,37 +188,39 @@ export const Header: React.FC<HeaderProps> = ({
             title="Open User Guide & Manual (Ctrl/Cmd + U)"
           >
             <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden sm:inline">User Guide</span>
+            <span className="hidden sm:inline">Guide</span>
           </button>
 
           {/* Native Install & Distribution Guide Button */}
           <button
             id="btn-install-guide"
             onClick={() => onOpenUserGuide('installation')}
-            className="hidden md:flex px-3 py-1.5 text-xs font-medium text-sky-300 hover:text-white bg-sky-950/60 hover:bg-sky-900/80 border border-sky-500/40 rounded-lg transition-all items-center gap-1.5 cursor-pointer shadow-sm shadow-sky-950"
+            className="hidden md:flex px-2.5 sm:px-3 py-1.5 text-xs font-medium text-sky-300 hover:text-white bg-sky-950/60 hover:bg-sky-900/80 border border-sky-500/40 rounded-lg transition-all items-center gap-1.5 cursor-pointer shadow-sm shadow-sky-950"
             title="Native Apps (Android APK, Windows .exe, macOS .dmg, PWA)"
           >
             <Smartphone className="w-3.5 h-3.5 text-sky-400" />
             <span>Install Native</span>
           </button>
 
+          {/* Export Starter Bundle */}
           <button
             id="btn-export-bundle"
             onClick={onExportBundle}
-            className="hidden lg:flex px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700/80 border border-slate-700 rounded-lg transition-all items-center gap-1.5"
+            className="hidden xl:flex px-2.5 sm:px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700/80 border border-slate-700 rounded-lg transition-all items-center gap-1.5 cursor-pointer"
             title="Download Capstone Starter Code & Protobuf contracts"
           >
             <Download className="w-3.5 h-3.5 text-slate-400" />
-            <span>Export Bundle</span>
+            <span>Export</span>
           </button>
 
+          {/* AI Advisor Button */}
           <button
             id="btn-ai-tutor"
             onClick={onOpenAiTutor}
-            className="px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-emerald-600 to-sky-600 hover:from-emerald-500 hover:to-sky-500 rounded-lg shadow-md shadow-emerald-500/10 transition-all flex items-center gap-1.5 cursor-pointer"
+            className="px-2.5 sm:px-3 py-1.5 text-xs font-medium text-white bg-gradient-to-r from-emerald-600 to-sky-600 hover:from-emerald-500 hover:to-sky-500 rounded-lg shadow-md shadow-emerald-500/10 transition-all flex items-center gap-1.5 cursor-pointer"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">AI Advisor</span>
+            <span className="hidden sm:inline">Advisor</span>
           </button>
         </div>
       </div>
@@ -197,8 +235,8 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 key={tab.id}
                 id={`nav-tab-${tab.id}`}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+                onClick={() => handleTabClick(tab.id)}
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
                   isActive
                     ? 'bg-slate-800 text-white shadow-sm border border-slate-700/80 text-emerald-400'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
@@ -224,4 +262,3 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
-

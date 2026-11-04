@@ -1,0 +1,68 @@
+# KBT Brand Frontend Export & Integration Guide
+
+This asset integration documentation outlines the production setup for the **KBT App Logo** (the tech-styled green/yellow spider icon), specifically tailored for your multiplatform application built with **Vite, React, and Tauri** [9.9.9].
+
+---
+
+## 1. Tailwind CSS Squircle Mask Configuration
+
+Standard rounded corners (`border-radius`) do not match the authentic smooth continuity of an iOS/Android squircle (superellipse) [1.1.28]. To apply a true squircle geometry dynamically on the web or across platform windows, map a custom utility or SVG mask path in your Tailwind configurations.
+
+### Option A: SVG Mask Utility (Recommended)
+Add the following template directly into your `src/index.css` global stylesheet to mask your transparent PNG asset into a perfectly smooth squircle structure:
+
+```css
+@layer utilities {
+  .mask-squircle {
+    mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path fill="black" d="M 0,50 C 0,4 4,0 50,0 C 96,0 100,4 100,50 C 100,96 96,100 50,100 C 4,100 0,96 0,50 Z"/></svg>');
+    mask-size: 100% 100%;
+    mask-repeat: no-repeat;
+    -webkit-mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path fill="black" d="M 0,50 C 0,4 4,0 50,0 C 96,0 100,4 100,50 C 100,96 96,100 50,100 C 4,100 0,96 0,50 Z"/></svg>');
+    -webkit-mask-size: 100% 100%;
+    -webkit-mask-repeat: no-repeat;
+  }
+}
+```
+
+### Option B: Tailored Tailwind Integration Component
+Implement the component structure within your React views:
+
+```tsx
+import React from 'react';
+
+export const AppIconImage: React.FC = () => {
+  return (
+    <div className="relative w-24 h-24 bg-gradient-to-br from-zinc-900 to-black p-4 mask-squircle flex items-center justify-center border border-yellow-400/20">
+      <img 
+        src="/assets/kbt-logo-transparent.png" 
+        alt="KBT App Logo" 
+        className="w-full h-full object-contain filter drop-shadow-[0_0_8px_rgba(163,230,53,0.5)]"
+      />
+    </div>
+  );
+};
+```
+
+---
+
+## 2. Multiplatform Asset Bundling Specifications
+
+To bundle the compiled transparent logo into production binaries across target channels, verify your configuration layouts comply with the structural guidelines listed below:
+
+| Target Binaries | Config Location | Dimension Layout | Asset Type |
+| :--- | :--- | :--- | :--- |
+| **Desktop App (Tauri v2)** | `src-tauri/tauri.conf.json` | Various up to 512x512 | `.ico` (Windows) / `.icns` (macOS) |
+| **Mobile Web App (Vite)** | `public/manifest.json` | 192x192 & 512x512 | Transparent `.png` |
+| **Mobile Android Build** | `src-cordova/res/icon` | Adaptive Vectors | Fore/Background `.png` [1.1.28] |
+
+---
+
+## 3. Production Export Workflow for Developers
+
+1. Place your exported standalone high-resolution transparent asset into `public/assets/kbt-logo-transparent.png`.
+2. Execute Tauri's automatic icon generator utility directly in your terminal workspace to automatically generate and format all required sizes for Windows `.msi` and macOS `.dmg` bundles [9.9.9]:
+   ```bash
+   npm run tauri icon ./public/assets/kbt-logo-transparent.png
+   ```
+
+This is for informational purposes only. For medical advice or diagnosis, consult a professional. AI responses may include mistakes.

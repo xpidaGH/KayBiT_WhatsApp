@@ -11,17 +11,24 @@ import { CapstoneCurriculum } from './components/CapstoneCurriculum';
 import { SystemHealthDashboard } from './components/SystemHealthDashboard';
 import { GeminiTutorModal } from './components/GeminiTutorModal';
 import { UserGuideModal } from './components/UserGuideModal';
+import { ThemeSettingsModal } from './components/ThemeSettingsModal';
+import { BrandAssetsModal } from './components/BrandAssetsModal';
 import { ENGINEERING_TRACKS } from './data/tracksData';
 import { TrackId, ProgrammingLanguageInfo } from './types';
 import { CAPSTONE_MILESTONES, PROTOBUF_SPECIFICATION } from './data/curriculumData';
 import { getAllSnippetRecords, getAllProgressRecords } from './utils/indexedDBStorage';
+import { getActiveThemePreset, applyThemePreset, ThemePreset } from './utils/themeManager';
+import { saveRecentSearch } from './utils/recentSearches';
 
 export default function App() {
+  const [activeThemePreset, setActiveThemePreset] = useState<ThemePreset>(() => getActiveThemePreset());
+
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    const savedTheme = localStorage.getItem('kaybit_theme');
-    if (savedTheme === 'light' || savedTheme === 'dark') return savedTheme;
-    return 'dark';
+    return activeThemePreset.isDark ? 'dark' : 'light';
   });
+
+  const [isThemeModalOpen, setIsThemeModalOpen] = useState<boolean>(false);
+  const [isBrandAssetsOpen, setIsBrandAssetsOpen] = useState<boolean>(false);
 
   const [activeTab, setActiveTab] = useState<AppTabId>('whatsapp');
 
@@ -40,27 +47,36 @@ export default function App() {
   const [isUserGuideOpen, setIsUserGuideOpen] = useState<boolean>(false);
   const [userGuideDoc, setUserGuideDoc] = useState<'guide' | 'installation' | 'readme'>('guide');
 
-  // Synchronize Theme with Document Element
+  // Synchronize Active Theme Preset & CSS Variables on Mount & Change
   useEffect(() => {
-    if (theme === 'light') {
-      document.documentElement.classList.add('light');
-      document.documentElement.classList.remove('dark');
-    } else {
+    applyThemePreset(activeThemePreset);
+    setTheme(activeThemePreset.isDark ? 'dark' : 'light');
+  }, [activeThemePreset]);
+
+  // Quick light/dark toggler
+  const toggleTheme = () => {
+    const nextIsDark = theme === 'light';
+    setTheme(nextIsDark ? 'dark' : 'light');
+    if (nextIsDark) {
       document.documentElement.classList.add('dark');
       document.documentElement.classList.remove('light');
+    } else {
+      document.documentElement.classList.add('light');
+      document.documentElement.classList.remove('dark');
     }
-    localStorage.setItem('kaybit_theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+    localStorage.setItem('kaybit_theme', nextIsDark ? 'dark' : 'light');
   };
 
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl/Cmd + Shift + L: Toggle Theme
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'l' || e.key === 'L')) {
+      // Ctrl/Cmd + T: Theme Settings Modal
+      if ((e.ctrlKey || e.metaKey) && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault();
+        setIsThemeModalOpen((prev) => !prev);
+      }
+      // Ctrl/Cmd + Shift + L: Quick Toggle Light/Dark
+      else if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'l' || e.key === 'L')) {
         e.preventDefault();
         toggleTheme();
       }
@@ -92,31 +108,67 @@ export default function App() {
           '9': 'curriculum',
         };
         if (tabMap[e.key]) {
-          setActiveTab(tabMap[e.key]);
+          const tabId = tabMap[e.key];
+          setActiveTab(tabId);
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
+  }, [theme]);
 
   // Jump from track navigator or search to code workbench
   const handleSelectLanguage = (lang: ProgrammingLanguageInfo) => {
+    saveRecentSearch({
+      id: `lang-${lang.id}`,
+      type: 'language',
+      title: lang.name,
+      subtitle: lang.roleTitle,
+      badge: 'Language',
+      data: { language: lang, trackId: lang.trackId },
+    });
+    window.dispatchEvent(new Event('kaybit_recent_searches_updated'));
+
     setSelectedTrackId(lang.trackId);
     setSelectedLanguage(lang);
     setActiveTab('code');
   };
 
-  // Jump to track blueprint from search
+  // Jump to track blueprint from search or card
   const handleSelectTrack = (trackId: TrackId) => {
+    const track = ENGINEERING_TRACKS.find((t) => t.id === trackId);
+    if (track) {
+      saveRecentSearch({
+        id: `track-${track.id}`,
+        type: 'track',
+        title: track.title,
+        subtitle: track.subtitle,
+        badge: 'Track',
+        data: { trackId: track.id },
+      });
+      window.dispatchEvent(new Event('kaybit_recent_searches_updated'));
+    }
+
     setSelectedTrackId(trackId);
     setActiveTab('blueprint');
   };
 
   // Jump to curriculum milestone sprint from search
   const handleSelectMilestone = (sprintIdx: number) => {
+    const milestone = CAPSTONE_MILESTONES[sprintIdx];
+    if (milestone) {
+      saveRecentSearch({
+        id: `milestone-${milestone.sprint}`,
+        type: 'milestone',
+        title: `${milestone.sprint}: ${milestone.title}`,
+        subtitle: `Week ${milestone.week}`,
+        badge: 'Sprint',
+        data: { sprintIdx },
+      });
+      window.dispatchEvent(new Event('kaybit_recent_searches_updated'));
+    }
+
     setSelectedSprintIdx(sprintIdx);
     setActiveTab('curriculum');
   };
@@ -126,6 +178,16 @@ export default function App() {
     for (const track of ENGINEERING_TRACKS) {
       const found = track.languages.find((l) => l.id === langId);
       if (found) {
+        saveRecentSearch({
+          id: `lang-${found.id}`,
+          type: 'language',
+          title: found.name,
+          subtitle: found.roleTitle,
+          badge: 'Language',
+          data: { language: found, trackId: track.id },
+        });
+        window.dispatchEvent(new Event('kaybit_recent_searches_updated'));
+
         setSelectedTrackId(track.id);
         setSelectedLanguage(found);
         setActiveTab('code');
@@ -151,6 +213,7 @@ export default function App() {
     const bundleData = {
       project: 'KayBiT_WhatsApp Capstone Studio',
       timestamp: new Date().toISOString(),
+      activeThemePreset: activeThemePreset.name,
       indexedDBCachedSnippets: cachedSnippets,
       indexedDBProgress: cachedProgress,
       architectureTracks: ENGINEERING_TRACKS.map((track) => ({
@@ -159,48 +222,46 @@ export default function App() {
         languages: track.languages.map((l) => {
           const custom = cachedSnippets[l.id];
           return {
+            id: l.id,
             name: l.name,
-            role: l.roleTitle,
-            file: l.codeFile,
-            snippet: custom?.isCustomized ? custom.customCode : l.codeSnippet,
-            isCustomized: !!custom?.isCustomized,
-            progressStatus: cachedProgress[l.id]?.status || 'not_started',
+            codeFile: l.codeFile,
+            hasLocalEdits: !!custom,
+            currentCode: custom ? custom.customCode : l.codeSnippet,
+            performanceTarget: l.metrics[0]?.value || 'N/A',
           };
         }),
       })),
-      curriculum: CAPSTONE_MILESTONES,
-      protobufContract: PROTOBUF_SPECIFICATION,
+      protobufSpec: PROTOBUF_SPECIFICATION,
+      curriculumMilestones: CAPSTONE_MILESTONES,
     };
 
-    const blob = new Blob([JSON.stringify(bundleData, null, 2)], {
-      type: 'application/json',
-    });
+    const blob = new Blob([JSON.stringify(bundleData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'kaybit_whatsapp_capstone_bundle.json';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `kaybit_whatsapp_capstone_export_${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
-      {/* Top Main Navigation Header */}
+    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-emerald-500/30 selection:text-emerald-200 theme-transition">
+      {/* Universal Header with Recent Searches, Theme Settings & Multiplatform App Icon */}
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         theme={theme}
         onToggleTheme={toggleTheme}
-        onOpenAiTutor={() => {
-          setCodeContextForAi(null);
-          setIsAiTutorOpen(true);
-        }}
+        onOpenAiTutor={() => setIsAiTutorOpen(true)}
         onExportBundle={handleExportBundle}
         onOpenUserGuide={handleOpenUserGuide}
         onSelectLanguage={handleSelectLanguage}
         onSelectTrack={handleSelectTrack}
         onSelectMilestone={handleSelectMilestone}
+        onOpenThemeModal={() => setIsThemeModalOpen(true)}
+        onOpenBrandAssets={() => setIsBrandAssetsOpen(true)}
       />
 
       {/* Main Content View Switcher */}
@@ -247,7 +308,7 @@ export default function App() {
           <CodeWorkbench
             tracks={ENGINEERING_TRACKS}
             selectedLanguage={selectedLanguage}
-            onSelectLanguage={setSelectedLanguage}
+            onSelectLanguage={handleSelectLanguage}
             onAskAiWithCode={handleOpenAiTutorWithCode}
           />
         )}
@@ -263,7 +324,9 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'database' && <DatabaseBenchmarker />}
+        {activeTab === 'database' && (
+          <DatabaseBenchmarker />
+        )}
 
         {activeTab === 'curriculum' && (
           <CapstoneCurriculum
@@ -275,28 +338,42 @@ export default function App() {
         )}
       </main>
 
-
-      {/* Footer */}
-      <footer className="bg-slate-950 border-t border-slate-800/80 py-6 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+      {/* Global Studio Footer */}
+      <footer className="border-t border-slate-800/80 bg-slate-900/60 py-4 px-4 sm:px-6 lg:px-8 mt-auto">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-400">KayBiT_WhatsApp Capstone Studio</span>
+            <span className="font-semibold text-slate-300">KayBiT_WhatsApp Capstone Studio</span>
             <span>•</span>
-            <span>5 Engineering Tracks • 20 Programming Languages</span>
+            <span>Theme: <strong className="text-emerald-400">{activeThemePreset.name}</strong></span>
           </div>
-          <div className="flex items-center gap-4 text-slate-400 font-mono text-[11px]">
+
+          <div className="flex items-center gap-4 text-xs">
+            <button
+              onClick={() => setIsThemeModalOpen(true)}
+              className="hover:text-emerald-400 transition-colors cursor-pointer"
+            >
+              Theme Variations
+            </button>
+            <span>•</span>
+            <button
+              onClick={() => setIsBrandAssetsOpen(true)}
+              className="hover:text-amber-400 transition-colors cursor-pointer"
+            >
+              Brand App Icons
+            </button>
+            <span>•</span>
             <button
               onClick={() => handleOpenUserGuide('guide')}
-              className="hover:text-emerald-400 underline decoration-slate-700 underline-offset-2 transition-colors cursor-pointer"
+              className="hover:text-slate-200 underline decoration-slate-700 underline-offset-2 transition-colors cursor-pointer"
             >
-              User Guide
+              System Docs
             </button>
             <span>•</span>
             <button
               onClick={() => handleOpenUserGuide('installation')}
-              className="hover:text-sky-400 underline decoration-slate-700 underline-offset-2 transition-colors cursor-pointer"
+              className="hover:text-slate-200 underline decoration-slate-700 underline-offset-2 transition-colors cursor-pointer"
             >
-              Native Install Guide (APK/EXE/DMG)
+              Native Build Matrix
             </button>
             <span>•</span>
             <button
@@ -308,6 +385,20 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Theme Settings Modal (5 Distinct UI Variations) */}
+      <ThemeSettingsModal
+        isOpen={isThemeModalOpen}
+        onClose={() => setIsThemeModalOpen(false)}
+        activeThemeId={activeThemePreset.id}
+        onSelectTheme={(theme) => setActiveThemePreset(theme)}
+      />
+
+      {/* Multiplatform Brand Logo & App Icon Preview Modal */}
+      <BrandAssetsModal
+        isOpen={isBrandAssetsOpen}
+        onClose={() => setIsBrandAssetsOpen(false)}
+      />
 
       {/* User Guide & Installation Documentation Modal */}
       <UserGuideModal
