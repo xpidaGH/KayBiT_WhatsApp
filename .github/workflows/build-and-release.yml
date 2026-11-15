@@ -1,0 +1,180 @@
+name: Build and Release (Local Testing)
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  pre-check:
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+      source_hash: ${{ steps.check.outputs.source_hash }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Evaluate Tauri & Capacitor file hashes
+        id: check
+        run: |
+          CURRENT_HASH="${{ hashFiles('src/**', 'src-tauri/**', 'package.json', 'package-lock.json', 'capacitor.config.*', 'android/**', 'ios/**') }}"
+          echo "source_hash=$CURRENT_HASH" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$CURRENT_HASH" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ----------------------------------------------------
+  # JOB 1: BUILD DESKTOP APPS (TAURI) & ANDROID (CAPACITOR)
+  # ----------------------------------------------------
+  build-desktop-and-android:
+    needs: pre-check
+    if: needs.pre-check.outputs.should_run == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'
+            args: '--target universal-apple-darwin'
+          - platform: 'windows-latest'
+            args: ''
+          - platform: 'ubuntu-latest'
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: Install Frontend Dependencies
+        run: npm install
+
+      # Android SDK Setup (Only needed on Linux runner to build .apk / .aab)
+      - name: Setup Java JDK & Android SDK
+        if: matrix.platform == 'ubuntu-latest'
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        if: matrix.platform == 'ubuntu-latest'
+        uses: android-actions/setup-android@v3
+
+      # Rust setup required for Tauri
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      # Install Linux native dependencies for Tauri & PipeWire
+      - name: Install Linux Build Dependencies
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libpipewire-0.3-dev \
+            pipewire-audio-client-libraries
+
+      # Compile Frontend Web Assets (Shared by Tauri & Capacitor)
+      - name: Build Web Application
+        run: npm run build
+
+      # TAURI DESKTOP BUILD STEP (Local test build without publishing a GitHub Release)
+      - name: Build Tauri Desktop Application
+        run: npx tauri build ${{ matrix.args }}
+
+      - name: Upload Tauri Desktop Test Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-desktop-${{ matrix.platform }}
+          path: |
+            src-tauri/target/**/release/bundle/dmg/*.dmg
+            src-tauri/target/**/release/bundle/macos/*.app
+            src-tauri/target/**/release/bundle/msi/*.msi
+            src-tauri/target/**/release/bundle/nsis/*.exe
+            src-tauri/target/**/release/bundle/deb/*.deb
+            src-tauri/target/**/release/bundle/appimage/*.AppImage
+          retention-days: 7
+
+      # CAPACITOR ANDROID BUILD STEP (Runs on Linux Runner)
+      - name: Build Android via Capacitor
+        if: matrix.platform == 'ubuntu-latest'
+        run: |
+          npx cap sync android
+          cd android
+          ./gradlew assembleDebug
+
+      - name: Upload Android Test APK
+        if: matrix.platform == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-local-test-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+
+  # ----------------------------------------------------
+  # JOB 2: DEDICATED IOS BUILD (MACOS RUNNER - PARALLEL)
+  # ----------------------------------------------------
+  build-ios:
+    needs: pre-check
+    if: needs.pre-check.outputs.should_run == 'true'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: Install Frontend Dependencies
+        run: npm install
+
+      - name: Build Web Application
+        run: npm run build
+
+      - name: Capacitor Sync iOS
+        run: npx cap sync ios
+
+      - name: Build Unsigned iOS App Bundle
+        run: |
+          cd ios/App
+          xcodebuild -workspace App.xcworkspace \
+            -scheme App \
+            -sdk iphoneos \
+            -configuration Debug \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload Unsigned iOS App Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-local-test-app
+          path: ios/App/build/Build/Products/Debug-iphoneos/App.app
+          retention-days: 7
