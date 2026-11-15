@@ -2,10 +2,8 @@ name: Multi-Platform CI/CD & Secure Production Release
 
 on:
   push:
-    branches: [ main, release/** ]
-    tags: [ 'v*.*.*' ]
-  release:
-    types: [ published ]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
