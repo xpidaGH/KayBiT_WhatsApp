@@ -65,11 +65,14 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17'
+          java-version: '21'
 
       - name: Setup Android SDK
         if: matrix.platform == 'ubuntu-latest'
         uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
 
       # Rust setup required for Tauri
       - name: Setup Rust toolchain
@@ -106,7 +109,7 @@ jobs:
 
       # TAURI DESKTOP BUILD STEP (Local test build without publishing a GitHub Release)
       - name: Build Tauri Desktop Application
-        run: npx tauri build ${{ matrix.args }}
+        run: npx --yes @tauri-apps/cli build ${{ matrix.args }}
 
       - name: Upload Tauri Desktop Test Artifacts
         uses: actions/upload-artifact@v4
@@ -127,6 +130,7 @@ jobs:
         run: |
           npx cap sync android
           cd android
+          chmod +x gradlew
           ./gradlew assembleDebug
 
       - name: Upload Android Test APK
@@ -165,12 +169,21 @@ jobs:
       - name: Build Unsigned iOS App Bundle
         run: |
           cd ios/App
-          xcodebuild -workspace App.xcworkspace \
-            -scheme App \
-            -sdk iphoneos \
-            -configuration Debug \
-            -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO
+          if [ -d "App.xcworkspace" ]; then
+            xcodebuild -workspace App.xcworkspace \
+              -scheme App \
+              -sdk iphoneos \
+              -configuration Debug \
+              -derivedDataPath build \
+              CODE_SIGNING_ALLOWED=NO
+          else
+            xcodebuild -project App.xcodeproj \
+              -scheme App \
+              -sdk iphoneos \
+              -configuration Debug \
+              -derivedDataPath build \
+              CODE_SIGNING_ALLOWED=NO
+          fi
 
       - name: Upload Unsigned iOS App Bundle
         uses: actions/upload-artifact@v4
